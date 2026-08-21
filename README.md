@@ -139,3 +139,19 @@ $ cargo test                  # the whole story, as regression tests
    plain sentence, shipped inside the tool. A capability system only works
    if the least technical person in the village can hold their own keys —
    that is the hard requirement, and this project treats it as such.
+
+## License
+
+Dual-licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option — the Rust ecosystem's convention, chosen deliberately: MIT
+for maximum permissiveness, Apache-2.0 for its explicit patent grant, which
+matters more than usual for a project whose whole substance is cryptographic
+mechanism.
+
+Unless you explicitly state otherwise, any contribution intentionally
+submitted for inclusion in this work by you shall be dual-licensed as above,
+without any additional terms or conditions.
