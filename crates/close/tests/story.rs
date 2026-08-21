@@ -111,7 +111,117 @@ fn the_whole_story() {
     let _ = fs::remove_dir_all(&root);
 }
 
+#[test]
+fn the_signpost_story() {
+    let root = scratch("signpost");
+    fs::create_dir_all(root.join("app")).unwrap();
+    fs::create_dir_all(root.join("ops")).unwrap();
+    fs::create_dir_all(root.join("vault")).unwrap();
+    fs::write(root.join("app/main.rs"), "v1").unwrap();
+
+    let repo = Repo::init(&root, "maria").unwrap();
+    for (path, name) in [("ops", "ops"), ("vault", "vault")] {
+        let close = repo
+            .found_close("maria", name, cc_core::Silhouette::OpenOutline)
+            .unwrap();
+        let mut map = repo.closemap().unwrap();
+        map.0.push((path.into(), close.to_hex()));
+        repo.save_closemap(&map).unwrap();
+    }
+    fs::write(root.join("vault/stripe-key"), "sk_live_TOPSECRET").unwrap();
+    let keep1 = repo.keep("app v1.0").unwrap();
+
+    // The signpost: declaration is versioned wiring; value never is.
+    let decl = repo
+        .cell_new("ops/prod", "environment", vec!["api".into()])
+        .unwrap();
+    assert!(root.join("ops/prod.cell").exists());
+
+    // Maria (steward: founding grant carries all powers) points prod at v1.0.
+    repo.point(
+        "maria",
+        "ops/prod",
+        vec![("api".into(), keep1, "v1.0".into())],
+        "first deploy",
+    )
+    .unwrap();
+
+    // The deploy robot: everything + point on ops, everything on the commons,
+    // and NOTHING on the vault — though prod transitively includes it.
+    repo.new_identity("robot").unwrap();
+    share_with_powers(&repo, "ops", "robot", Facet::Content, cc_core::Powers::SET);
+    share(&repo, "", "robot", Facet::Content);
+
+    fs::write(root.join("app/main.rs"), "v1.1").unwrap();
+    let keep2 = repo.keep("app v1.1").unwrap();
+    let (_, t) = repo
+        .point(
+            "robot",
+            "ops/prod",
+            vec![("api".into(), keep2, "v1.1".into())],
+            "ship 1.1",
+        )
+        .unwrap();
+    assert_eq!(t.body.seq, 1);
+    assert_eq!(t.body.by.name, "robot");
+
+    // Permission composes through pins: the robot deploys prod, which pins a
+    // tree containing the vault — and still cannot read the secret.
+    let (sealed_secret, _) = repo
+        .resolve_path("maria", &segments("vault/stripe-key"))
+        .unwrap();
+    assert!(repo.open_blob("robot", &sealed_secret).is_none());
+
+    // Dana, label-only on ops: sees THAT prod moved — never where.
+    repo.new_identity("dana").unwrap();
+    share(&repo, "ops", "dana", Facet::Shape);
+    let head_ref = {
+        let ref_name = format!("cells/{}", decl.id().to_hex());
+        repo.store.get_ref(&ref_name).unwrap().unwrap()
+    };
+    let sealed_head = repo.load_sealed(&head_ref).unwrap();
+    let card = repo
+        .open_card("dana", &sealed_head)
+        .expect("label opens the move card");
+    assert!(card.note.contains("move #1"));
+    assert!(
+        repo.cell_head("dana", &decl).is_err(),
+        "pins sealed to label holders"
+    );
+
+    // Reading where prod points is a facet; MOVING it is a power.
+    repo.new_identity("reader").unwrap();
+    share(&repo, "ops", "reader", Facet::Content);
+    assert!(repo.cell_head("reader", &decl).is_ok());
+    assert!(repo
+        .point(
+            "reader",
+            "ops/prod",
+            vec![("api".into(), keep1, String::new())],
+            "sneaky"
+        )
+        .is_err());
+
+    // The forward-only guard refuses rollbacks — for everyone.
+    for who in ["robot", "maria"] {
+        assert!(repo
+            .point(
+                who,
+                "ops/prod",
+                vec![("api".into(), keep1, String::new())],
+                "roll back"
+            )
+            .is_err());
+    }
+
+    let _ = fs::remove_dir_all(&root);
+}
+
 fn share(repo: &Repo, path: &str, with: &str, facet: Facet) {
+    share_with_powers(repo, path, with, facet, cc_core::Powers::NONE)
+}
+
+fn share_with_powers(repo: &Repo, path: &str, with: &str, facet: Facet, powers: cc_core::Powers) {
     let rel = segments(path).join("/");
     let close = repo.governing(&rel).unwrap();
     let record = repo.load_close(&close).unwrap();
@@ -124,7 +234,7 @@ fn share(repo: &Repo, path: &str, with: &str, facet: Facet) {
         record.epoch,
         repo.public_of(with).unwrap(),
         facet,
-        cc_core::Powers::NONE,
+        powers,
         vec![],
         None,
         vec![],

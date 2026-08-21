@@ -6,6 +6,7 @@
 //! a whole village.
 
 use anyhow::{anyhow, bail, Context, Result};
+use cc_cell::{CellDecl, Pin, Transition, Value};
 use cc_core::close::lower_facet_key;
 use cc_core::{
     CipherId, CloseId, CloseRecord, Facet, Grant, Identity, ObjectKind, Powers, PublicIdentity,
@@ -200,7 +201,9 @@ impl Repo {
             random32(),
         );
         self.save_close(&record)?;
-        // Stewards hold keys like everyone else: through a grant.
+        // Stewards hold keys like everyone else: through a grant — a founding
+        // one that carries every power, so all narrower rights can descend
+        // from it by attenuation.
         let grant = Grant::issue_root(
             &record,
             &id.sign,
@@ -208,7 +211,7 @@ impl Repo {
             0,
             id.public(),
             Facet::Content,
-            Powers::NONE,
+            Powers::SET.union(Powers::INVOKE),
             vec![],
             None,
             vec![],
@@ -596,6 +599,187 @@ impl Repo {
             walked.push(segment.clone());
         }
         Ok((sealed, walked))
+    }
+
+    // ---- the designation plane (signposts) --------------------------------
+
+    fn cell_index_path(&self) -> PathBuf {
+        self.cc.join("cells.json")
+    }
+
+    pub fn cell_index(&self) -> Result<Vec<CellDecl>> {
+        match fs::read_to_string(self.cell_index_path()) {
+            Ok(text) => Ok(serde_json::from_str(&text)?),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    fn save_cell_index(&self, index: &[CellDecl]) -> Result<()> {
+        fs::write(self.cell_index_path(), serde_json::to_string_pretty(index)?)?;
+        Ok(())
+    }
+
+    /// Raise a signpost. The declaration (the wiring: that it exists, its
+    /// kind, its guards) is written into the working tree as `<path>.cell`,
+    /// so the wiring is versioned by ordinary keeping — while the *value*
+    /// lives on the designation plane and is never snapshotted.
+    pub fn cell_new(&self, path: &str, kind: &str, forward_only: Vec<String>) -> Result<CellDecl> {
+        let segs = segments(path);
+        let rel = segs.join("/");
+        if rel.is_empty() {
+            bail!("a signpost needs a name — try `close cell new ops/prod`");
+        }
+        if self.cell_index()?.iter().any(|d| d.path == segs) {
+            bail!("a signpost already stands at '{rel}'");
+        }
+        let close = self.governing(&rel)?;
+        let decl = CellDecl {
+            path: segs,
+            close,
+            kind: kind.to_string(),
+            forward_only,
+        };
+        let decl_file = self.root.join(format!("{rel}.cell"));
+        if let Some(parent) = decl_file.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&decl_file, serde_json::to_string_pretty(&decl)?)?;
+        let mut index = self.cell_index()?;
+        index.push(decl.clone());
+        self.save_cell_index(&index)?;
+        Ok(decl)
+    }
+
+    pub fn cell_decl(&self, path: &str) -> Result<CellDecl> {
+        let segs = segments(path);
+        self.cell_index()?
+            .into_iter()
+            .find(|d| d.path == segs)
+            .ok_or_else(|| anyhow!("no signpost stands at '{}'", segs.join("/")))
+    }
+
+    fn cell_ref(decl: &CellDecl) -> String {
+        format!("cells/{}", decl.id().to_hex())
+    }
+
+    /// The journal head: current tip of the cell's transition chain, opened
+    /// as `who` (reading where a signpost points is a content-facet question).
+    pub fn cell_head(&self, who: &str, decl: &CellDecl) -> Result<Option<(CipherId, Transition)>> {
+        let Some(cipher) = self.store.get_ref(&Self::cell_ref(decl))? else {
+            return Ok(None);
+        };
+        let sealed = self.load_sealed(&cipher)?;
+        let record = self.load_close(&decl.close)?;
+        let key = self
+            .facet_key_for(who, &record, Facet::Content, sealed.epoch)
+            .ok_or_else(|| {
+                anyhow!(
+                    "{who} holds {} of '{}' — seeing where the signpost points needs everything",
+                    self.best_facet(who, &record)
+                        .map(|f| f.plain_name())
+                        .unwrap_or("nothing"),
+                    record.name
+                )
+            })?;
+        let t = cc_cell::open_transition(&sealed, &key).map_err(|e| anyhow!("{e}"))?;
+        Ok(Some((cipher, t)))
+    }
+
+    /// Move a signpost. Requires the `point` power and the current content
+    /// key of the governing close; checks the cell's guards; appends a
+    /// signed, hash-chained transition to the journal.
+    pub fn point(
+        &self,
+        who: &str,
+        path: &str,
+        slots: Vec<(String, CipherId, String)>,
+        reason: &str,
+    ) -> Result<(CipherId, Transition)> {
+        let decl = self.cell_decl(path)?;
+        let record = self.load_close(&decl.close)?;
+        let identity = self.identity(who)?;
+        let t_now = now();
+
+        let grant = self
+            .grants_for(who)
+            .into_iter()
+            .find(|g| {
+                g.body.close == decl.close
+                    && g.body.powers.contains(Powers::SET)
+                    && g.covers(&decl.path)
+                    && g.verify(&record, t_now).is_ok()
+            })
+            .ok_or_else(|| {
+                let steward = self
+                    .name_of_signer(&record.steward)
+                    .unwrap_or_else(|| "its steward".into());
+                anyhow!(
+                    "{who} may not move this signpost — pointing is a power, not a facet.\n\
+                     Ask {steward}: close share {path} --with {who} --seeing everything --power point"
+                )
+            })?;
+
+        let key = self.current_content_key(who, &record).ok_or_else(|| {
+            anyhow!(
+                "moving a signpost needs everything on '{}' (to seal the move)",
+                record.name
+            )
+        })?;
+
+        let head = self.cell_head(who, &decl)?;
+        let mut value: Value = head
+            .as_ref()
+            .map(|(_, t)| t.body.value.clone())
+            .unwrap_or_default();
+        for (slot, commit, note) in slots {
+            value.insert(slot, Pin { commit, note });
+        }
+
+        let head_value = head.as_ref().map(|(_, t)| &t.body.value);
+        cc_cell::check_forward(&decl, head_value, &value, &|old, new| {
+            self.is_descendant(who, old, new)
+        })
+        .map_err(|e| {
+            anyhow!(
+                "{e} — the guard binds everyone, steward included. Guards are wiring: \
+                 changing them is a declaration change, kept in history like any edit \
+                 (not yet automated in v0)"
+            )
+        })?;
+
+        let head_link = head.as_ref().map(|(c, t)| (c, t.body.seq));
+        let transition = Transition::make(&decl, head_link, value, &identity, grant, t_now, reason)
+            .map_err(|e| anyhow!("{e}"))?;
+        transition
+            .verify(&record, &decl)
+            .map_err(|e| anyhow!("{e}"))?;
+
+        let sealed = cc_cell::seal_transition(&record, &key, record.epoch, &transition)
+            .map_err(|e| anyhow!("{e}"))?;
+        let cipher = self.put_sealed(&sealed)?;
+        self.store.set_ref(&Self::cell_ref(&decl), &cipher)?;
+        Ok((cipher, transition))
+    }
+
+    /// Is `new` a keeping that descends from `old`? Walked as `who` (ancestry
+    /// lives inside commits, which are content-faceted like everything else).
+    pub fn is_descendant(&self, who: &str, old: &CipherId, new: &CipherId) -> bool {
+        let mut frontier = vec![*new];
+        let mut steps = 0;
+        while let Some(id) = frontier.pop() {
+            if id == *old {
+                return true;
+            }
+            steps += 1;
+            if steps > 10_000 {
+                return false;
+            }
+            if let Ok((_, commit)) = self.commit_at(who, &id) {
+                frontier.extend(commit.parents);
+            }
+        }
+        false
     }
 }
 

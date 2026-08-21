@@ -1,0 +1,15 @@
+[package]
+name = "cc-cell"
+description = "CloseCommon designation plane: signposts (cells), transitions, guards"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+cc-core = { path = "../cc-core" }
+blake3.workspace = true
+ed25519-dalek.workspace = true
+serde.workspace = true
+postcard.workspace = true
+thiserror.workspace = true

@@ -84,7 +84,7 @@ impl WrappedKey {
 
 /// The signed body of a grant. `parent` embeds the whole chain, so a grant is
 /// self-contained: verifiable on a laptop in a tent.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GrantBody {
     pub close: CloseId,
     pub holder: PublicIdentity,
@@ -106,7 +106,7 @@ pub struct GrantBody {
     pub parent: Option<Box<Grant>>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Grant {
     pub body: GrantBody,
     pub sig: Vec<u8>,

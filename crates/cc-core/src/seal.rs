@@ -28,6 +28,10 @@ pub enum ObjectKind {
     Note,
     /// An actuator's signed record that a power (e.g. `invoke`) was exercised.
     Receipt,
+    /// A move of a signpost on the designation plane: the journal entry whose
+    /// fold *is* the cell's current value. The mutable plane holds no new
+    /// trusted state — it is entirely made of these immutable objects.
+    Transition,
 }
 
 impl ObjectKind {

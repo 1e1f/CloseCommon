@@ -23,7 +23,7 @@ pub use close::{CloseRecord, EpochLink, Silhouette};
 pub use error::Error;
 pub use facet::{Facet, Powers};
 pub use grant::{Grant, GrantBody, Identity, PublicIdentity};
-pub use id::{CipherId, CloseId, PlainId};
+pub use id::{CellId, CipherId, CloseId, PlainId};
 pub use seal::{ObjectKind, SealedObject, ShapeCard};
 
 /// All key-derivation contexts are versioned so a future v1 can never collide

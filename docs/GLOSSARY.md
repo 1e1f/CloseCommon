@@ -19,6 +19,10 @@ a reviewed diff.
 | **silhouette** | presence policy | How much the locked drawer shows through the glass: its outline, just a count, or nothing at all. |
 | **keeping** | committing a snapshot | Pressing "keep" writes today's version into the story forever. Nothing kept is ever lost. |
 | **dissolving folder** | ephemeral view | A photocopied folder made for one task — for an assistant, say — that stops opening when the task is done. |
+| **signpost** | cell (designation plane) | The kept history is the land; a signpost stands on it and points — "production IS these snapshots." Moving it never changes the land. |
+| **pointing** | transition (SET power) | Moving a signpost. Seeing where it points and being allowed to move it are different keys — and every move leaves a footprint forever. |
+| **the trail** | cell journal | Every move of a signpost, written down: who, when, why, and under whose signature. |
+| **guard** | transition predicate | A rule on the signpost itself — "this one only moves forward" — that binds everyone, including whoever planted it, until the wiring is changed in the open. |
 
 ## The rules the registers live by
 

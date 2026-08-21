@@ -18,11 +18,22 @@ can narrow and hand onward, and no one can widen). Secrets, tickets, plans,
 policies, and deploy receipts become ordinary objects in unusual drawers —
 and merging works even around drawers you cannot open.
 
-Two founding documents:
+And a second axis, because the state of production is not a snapshot but a
+*vector* of snapshots: **signposts** (wizards: cells) — permissioned, typed,
+journaled refs. The kept history is the land; a signpost stands on it and
+points ("production IS {api@A, infra@B, secrets@epoch7}"). Moving it never
+changes the land, moving it is a *power* distinct from reading it, and every
+move embeds its full chain of authority, forever. Branch protection,
+GitOps environment repos, Argo applications, and Terraform's lock file are
+all this one missing plane, finally designed into the substrate.
+
+The founding documents:
 
 - **[VISION.md](VISION.md)** — why, and where this goes.
-- **[docs/DESIGN.md](docs/DESIGN.md)** — the mechanism, the threat model,
-  and what we refuse to pretend.
+- **[docs/DESIGN.md](docs/DESIGN.md)** — the sealed-object mechanism, the
+  threat model, and what we refuse to pretend.
+- **[docs/SIGNPOSTS.md](docs/SIGNPOSTS.md)** — the designation plane:
+  unversioned state whose whole purpose is to point at the versioned.
 - **[docs/GLOSSARY.md](docs/GLOSSARY.md)** — every idea in two registers:
   kitchen table and wizard. It takes all kinds; the tool is built for both.
 
@@ -64,6 +75,31 @@ $ close look --as dana
   🔒 vault/ — sealed drawer  ⎔ close 'vault'
 ```
 
+And the second axis, in thirty more:
+
+```console
+$ close cell new ops/prod --kind environment --forward-only api
+a signpost stands at 'ops/prod' now (environment).
+its wiring ('ops/prod.cell') is versioned; where it points never is.
+
+$ close share ops --with robot --seeing everything --power point --days 30
+$ close point ops/prod api=main --reason "ship 1.1" --as robot
+$ close whereis ops/prod
+  api → "app v1.1"  (forward-only)
+  — move #1, by robot, 2026-08-21: "ship 1.1"
+
+$ close whereis ops/prod --as dana        # dana holds label on ops
+  move #1 by robot — where it points is not yours to see
+
+$ close point ops/prod api=<old-keeping> --as robot
+close: guard refused: slot 'api' only moves forward — the guard binds
+everyone, steward included.
+
+$ close trail ops/prod
+· move #1  by robot  (authority from maria)  "ship 1.1"
+· move #0  by maria  (authority from maria)  "first deploy"
+```
+
 Everything at rest in `.cc/objects/` is ciphertext — grep for the secret,
 find nothing. Any word confusing? `close explain` speaks both registers.
 
@@ -74,13 +110,16 @@ A local, single-machine substrate proving the core mechanism end to end:
 | Crate | What it is |
 |---|---|
 | `cc-core` | Sealed objects with two identities (plain/cipher), closes with epoch chains ("changing the lock"), downward-only facet keys, attenuable offline grants |
+| `cc-cell` | The designation plane: signposts whose values are vectors of pins, moved by journaled, authority-embedding transitions under the **point** power, with guards |
 | `cc-dag` | Trees, commits, and three-way merges that work *around* sealed subtrees — one-sided changes merge without keys; both-sided changes surface as honest **sealed conflicts** |
 | `cc-store` | The key-blind object store: any disk or relay can host a commons it cannot read |
 | `close` | The CLI, speaking both registers, with the glossary compiled in |
 
-Not yet built (specified in [docs/DESIGN.md](docs/DESIGN.md)): sync between
-machines, counted/dark silhouettes with name-veiling, actuators and receipts
-(*ask the butler*), quorum stewardship, dissolving views, and the Git bridge.
+Not yet built (specified in [docs/DESIGN.md](docs/DESIGN.md) and
+[docs/SIGNPOSTS.md](docs/SIGNPOSTS.md)): sync between machines, counted/dark
+silhouettes with name-veiling, actuators and receipts (*ask the butler*),
+field notes and drift, approval/attestation guards, leases, quorum
+stewardship, dissolving views, and the Git bridge.
 The demo's multi-person flow runs on one machine with `.cc/ids/` standing in
 for each person's keychain — a stage, not a security boundary.
 

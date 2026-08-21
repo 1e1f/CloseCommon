@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/cc-core",
+    "crates/cc-cell",
     "crates/cc-dag",
     "crates/cc-store",
     "crates/close",

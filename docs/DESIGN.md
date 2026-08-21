@@ -258,6 +258,17 @@ whose grants all expire with it.
 This is the AI-era answer the substrate was shaped for: ephemeral workflows
 over durable, self-auditing state.
 
+## 8b. The designation plane **[v0]**
+
+Everything above concerns the immutable plane. Its mutable counterpart —
+signposts (cells): permissioned, typed, journaled refs whose values are
+vectors of pins into kept history, moved under the `point` power, protected
+by guards — has its own document: [SIGNPOSTS.md](SIGNPOSTS.md). One rule
+matters for this document's guarantees: the mutable plane holds no new
+trusted state. Cells are folds of ordinary sealed transition objects, so
+every claim here (key-blind relays, cipher-space verification, offline
+grants, epoch semantics) covers them with nothing added.
+
 ## 9. Sync **[design]**
 
 The wire protocol negotiates entirely in cipher space: have/want over

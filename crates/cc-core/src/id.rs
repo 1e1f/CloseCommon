@@ -78,6 +78,12 @@ id32!(
     "cls"
 );
 
+id32!(
+    /// Identity of a cell (a signpost on the designation plane).
+    CellId,
+    "cel"
+);
+
 /// Hash arbitrary bytes into the cipher-space address.
 pub fn cipher_id(envelope: &[u8]) -> CipherId {
     CipherId(*blake3::hash(envelope).as_bytes())

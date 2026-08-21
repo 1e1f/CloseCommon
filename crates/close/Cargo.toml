@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 cc-core = { path = "../cc-core" }
+cc-cell = { path = "../cc-cell" }
 cc-dag = { path = "../cc-dag" }
 cc-store = { path = "../cc-store" }
 clap.workspace = true

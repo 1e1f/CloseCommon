@@ -126,7 +126,54 @@ contractor's badge; the audit gets more than a SIEM ever captured. And
 because attenuation is local and offline, granting an agent a view costs
 what it should cost: nothing but a signature.
 
-## 5. The plebs clause
+## 5. The second axis: signposts
+
+Permissioned reading is one axis Git never served. The other is the one your
+infrastructure has been telling you about for a decade: **Git is a snapshot
+machine, and the state of production is not a snapshot — it is a vector of
+snapshots.** App at one keeping, infra module at another, config overlay at a
+third, secrets at an epoch. Git can hold every element of that vector and
+cannot hold the vector, which is why "what is actually running?" lives in
+Argo applications, Terraform state buckets, GitOps side-repos, and a release
+manager's spreadsheet — each with its own permissions, none of them the
+account of record.
+
+Here is the twist: Git already *has* a mutable, unversioned plane whose
+entire purpose is to designate snapshots — refs. It was simply never
+designed: one pointer, one type, no permissions, no schema, no native audit.
+Branch protection, environments, deploy logs — all of it is the missing
+designation plane, rebuilt outside the substrate.
+
+CloseCommon promotes that plane to a first-class citizen: the **signpost**
+(wizards: a *cell*). The kept history is the land; a signpost stands on it
+and points — "production IS {api@A, infra@B, secrets@epoch7}" — and moving
+it never changes the land. Three commitments make it substrate rather than
+feature:
+
+- **The mutable plane holds no new trusted state.** Every move is a signed,
+  hash-chained transition object sealed into the ordinary DAG; the "current
+  value" is nothing but the fold of the journal. Unversioned in the merge
+  sense — you never three-way-merge where prod points — yet accounted
+  forever: `close trail ops/prod` answers *who moved production, when, under
+  whose signature, and why*, from local ciphertext.
+- **One law, woven through.** A signpost lives in a close, so its value is
+  faceted like everything else: outline = "prod exists"; label = "prod
+  moved at 14:02, move #7, by the robot"; everything = the pins. Moving it
+  is a grant *power* — **point** — distinct from reading it, attenuable and
+  expirable like any right. And permission composes through pins: the deploy
+  robot sees that prod pins `stripe-key@v17` and still cannot read the key.
+- **Protection is wiring, not server configuration.** Guards — forward-only
+  slots today; approvals, attestations, quorum moves by design — are
+  declared in the signpost's *versioned* declaration and bind everyone,
+  steward included, until the wiring is changed in the open. Branch
+  protection generalized, finally inspectable in a clone.
+
+The deep mechanism lives in [docs/SIGNPOSTS.md](docs/SIGNPOSTS.md), with the
+designed-but-unbuilt half: observed state as actuator "field notes,"
+drift as a label-auditable diff between desired and observed vectors, and
+leases where Terraform keeps its lock.
+
+## 6. The plebs clause
 
 Here is the graveyard this project refuses to join: PGP died of key
 ceremonies. SELinux is disabled in the first hour of most incident writeups.
@@ -175,7 +222,7 @@ security substrate only works if the least technical member of the group can
 hold their own keys, and the history of this field says that requirement is
 the hard one. We treat it as such.
 
-## 6. What we refuse to pretend
+## 7. What we refuse to pretend
 
 - **Cryptography cannot unshare.** A revoked member keeps every plaintext
   they ever legitimately opened. Rotation protects the future. Anyone selling
@@ -191,7 +238,7 @@ the hard one. We treat it as such.
   because humans lose keys and organizations outlive laptops — that is on
   the road, and until it lands, small closes and honest warnings.
 
-## 7. Why Rust
+## 8. Why Rust
 
 Not fashion. A trust substrate wants exactly what Rust sells: memory safety
 without a runtime under the object store; a type system strong enough to make
@@ -203,13 +250,15 @@ a commons can eventually run in any browser tab. The crypto crates this
 substrate stands on (blake3, chacha20poly1305, the dalek curves) are among
 the best-audited in any ecosystem.
 
-## 8. The road
+## 9. The road
 
 **v0 — the substrate (this repository, working today):** sealed
 content-addressed objects with two identities (plain/cipher); closes with
 epoch chains and honest rotation; facet keys deriving downward only;
 attenuable offline grants; trees, commits, and three-way merges with sealed
-conflicts; a key-blind store; and the `close` CLI speaking both registers.
+conflicts; a key-blind store; the designation plane — signposts with
+journaled, authority-embedding transitions, the point power, and
+forward-only guards; and the `close` CLI speaking both registers.
 
 **v1 — the commons crosses machines:** a sync protocol negotiating in cipher
 space (relays never hold keys); partial replication that is principled
@@ -220,8 +269,10 @@ name-veiling.
 **v2 — the substrate absorbs the periphery:** typed objects for tickets,
 plans, and policies with schema'd shape cards; actuators and receipts
 (`invoke` made real: deploy bots and signers as first-class key-holding
-identities); a Git bridge so a close can wear a plain repository as one of
-its faces.
+identities); field notes and drift — observed state reconciled against
+signposts, auditable at label facet; approval and attestation guards;
+leases; a Git bridge so a close can wear a plain repository as one of its
+faces.
 
 **v3 — views:** materialized, task-scoped, dissolving sub-commons; query and
 diff over label space; agents as routine, auditable, narrowly-granted

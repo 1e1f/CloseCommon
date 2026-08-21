@@ -51,6 +51,9 @@ enum Command {
     History {
         #[arg(long = "as")]
         as_name: Option<String>,
+        /// Print full keeping ids (for scripting and pointing)
+        #[arg(long)]
+        full: bool,
     },
     /// See what someone can see
     Look {
@@ -79,9 +82,41 @@ enum Command {
         /// outline | label | everything  (wizards: presence | shape | content)
         #[arg(long = "seeing", default_value = "label")]
         seeing: String,
+        /// Also grant powers: point (move signposts), butler (invoke)
+        #[arg(long = "power", value_delimiter = ',')]
+        power: Vec<String>,
         /// Expire the key after this many days
         #[arg(long)]
         days: Option<u64>,
+    },
+    /// Signposts: unversioned state whose whole purpose is to point at
+    /// kept history ("production IS these snapshots")
+    Cell {
+        #[command(subcommand)]
+        cmd: CellCmd,
+    },
+    /// Move a signpost: point a slot at a keeping
+    ///   close point ops/prod api=main --reason "ship 1.2"
+    Point {
+        path: String,
+        /// slot=ref pairs; ref is `main` (the current keeping) or a full id
+        sets: Vec<String>,
+        #[arg(long, default_value = "")]
+        reason: String,
+        #[arg(long = "as")]
+        as_name: Option<String>,
+    },
+    /// Where does a signpost point? (graded by what you hold)
+    Whereis {
+        path: String,
+        #[arg(long = "as")]
+        as_name: Option<String>,
+    },
+    /// The signpost's trail: every move, who, when, under what authority
+    Trail {
+        path: String,
+        #[arg(long = "as")]
+        as_name: Option<String>,
     },
     /// Change the lock on a close; choose who keeps up
     Rotate {
@@ -92,6 +127,23 @@ enum Command {
     },
     /// The two-register dictionary
     Explain { term: Option<String> },
+}
+
+#[derive(Subcommand)]
+enum CellCmd {
+    /// Raise a signpost at a path (the declaration is versioned; the value
+    /// never is)
+    New {
+        path: String,
+        /// What kind of vector this is: environment, release, rollout...
+        #[arg(long, default_value = "environment")]
+        kind: String,
+        /// Slots that may only move forward (toward descendants)
+        #[arg(long = "forward-only", value_delimiter = ',')]
+        forward_only: Vec<String>,
+    },
+    /// List the signposts standing in this commons
+    List,
 }
 
 #[derive(Subcommand)]
@@ -154,7 +206,7 @@ fn run() -> Result<()> {
             let id = repo.keep(&message)?;
             println!("kept: \"{message}\"  [{}]", id.short());
         }
-        Command::History { as_name } => {
+        Command::History { as_name, full } => {
             let repo = Repo::open(&root)?;
             let who = as_name.unwrap_or_else(|| repo.config.me.clone());
             let Some((mut id, mut commit)) = repo.head_commit(&who)? else {
@@ -162,12 +214,13 @@ fn run() -> Result<()> {
                 return Ok(());
             };
             loop {
+                let shown = if full { id.to_hex() } else { id.short() };
                 println!(
                     "· {}  {}  \"{}\"  [{}]",
                     date(commit.when),
                     commit.author,
                     commit.message,
-                    id.short()
+                    shown
                 );
                 match commit.parents.first() {
                     Some(parent) => {
@@ -264,12 +317,92 @@ fn run() -> Result<()> {
             path,
             with,
             seeing,
+            power,
             days,
         } => {
             let repo = Repo::open(&root)?;
             let facet = Facet::parse(&seeing)
                 .ok_or_else(|| anyhow!("'{seeing}'? say: outline, label, or everything"))?;
-            share(&repo, &path, &with, facet, days)?;
+            let mut powers = Powers::NONE;
+            for word in &power {
+                powers = powers.union(
+                    Powers::parse_word(word)
+                        .ok_or_else(|| anyhow!("'{word}'? powers are: point, butler"))?,
+                );
+            }
+            share(&repo, &path, &with, facet, powers, days)?;
+        }
+        Command::Cell { cmd } => {
+            let repo = Repo::open(&root)?;
+            match cmd {
+                CellCmd::New {
+                    path,
+                    kind,
+                    forward_only,
+                } => {
+                    let decl = repo.cell_new(&path, &kind, forward_only)?;
+                    let rel = decl.path.join("/");
+                    println!(
+                        "a signpost stands at '{rel}' now ({}) [{}].",
+                        decl.kind,
+                        decl.id().short()
+                    );
+                    println!("its wiring ('{rel}.cell') is versioned; where it points never is.");
+                    if !decl.forward_only.is_empty() {
+                        println!(
+                            "guarded slots (forward-only): {}",
+                            decl.forward_only.join(", ")
+                        );
+                    }
+                    println!();
+                    println!("point it:  close point {rel} api=main --reason \"first deploy\"");
+                }
+                CellCmd::List => {
+                    for decl in repo.cell_index()? {
+                        println!("{}  ({})", decl.path.join("/"), decl.kind);
+                    }
+                }
+            }
+        }
+        Command::Point {
+            path,
+            sets,
+            reason,
+            as_name,
+        } => {
+            let repo = Repo::open(&root)?;
+            let who = as_name.unwrap_or_else(|| repo.config.me.clone());
+            let mut slots = Vec::new();
+            for set in &sets {
+                let (slot, target) = set
+                    .split_once('=')
+                    .ok_or_else(|| anyhow!("'{set}'? point takes slot=ref, e.g. api=main"))?;
+                let commit = resolve_keep_ref(&repo, target)?;
+                slots.push((slot.to_string(), commit, target.to_string()));
+            }
+            if slots.is_empty() {
+                bail!("nothing to point — say which slot: close point {path} api=main");
+            }
+            let (cipher, t) = repo.point(&who, &path, slots, &reason)?;
+            println!(
+                "the signpost at '{path}' moved (move #{}) [{}]",
+                t.body.seq,
+                cipher.short()
+            );
+            for (slot, pin) in &t.body.value {
+                println!("  {slot} → {}", pin.commit.short());
+            }
+            println!("every move is journaled: close trail {path}");
+        }
+        Command::Whereis { path, as_name } => {
+            let repo = Repo::open(&root)?;
+            let who = as_name.unwrap_or_else(|| repo.config.me.clone());
+            whereis(&repo, &who, &path)?;
+        }
+        Command::Trail { path, as_name } => {
+            let repo = Repo::open(&root)?;
+            let who = as_name.unwrap_or_else(|| repo.config.me.clone());
+            trail(&repo, &who, &path)?;
         }
         Command::Rotate { path, except } => {
             let repo = Repo::open(&root)?;
@@ -282,7 +415,14 @@ fn run() -> Result<()> {
     Ok(())
 }
 
-fn share(repo: &Repo, path: &str, with: &str, facet: Facet, days: Option<u64>) -> Result<()> {
+fn share(
+    repo: &Repo,
+    path: &str,
+    with: &str,
+    facet: Facet,
+    powers: Powers,
+    days: Option<u64>,
+) -> Result<()> {
     let rel = segments(path).join("/");
     let close_id = repo.governing(&rel)?;
     let record = repo.load_close(&close_id)?;
@@ -305,7 +445,7 @@ fn share(repo: &Repo, path: &str, with: &str, facet: Facet, days: Option<u64>) -
             record.epoch,
             holder,
             facet,
-            Powers::NONE,
+            powers,
             vec![],
             expires,
             vec![],
@@ -318,7 +458,10 @@ fn share(repo: &Repo, path: &str, with: &str, facet: Facet, days: Option<u64>) -
             .grants_for(&me)
             .into_iter()
             .find(|g| {
-                g.body.close == close_id && g.body.facet >= facet && g.verify(&record, t).is_ok()
+                g.body.close == close_id
+                    && g.body.facet >= facet
+                    && g.body.powers.contains(powers)
+                    && g.verify(&record, t).is_ok()
             })
             .ok_or_else(|| {
                 anyhow!(
@@ -338,7 +481,7 @@ fn share(repo: &Repo, path: &str, with: &str, facet: Facet, days: Option<u64>) -
             &record,
             holder,
             facet,
-            Powers::NONE,
+            powers,
             mine.body.prefix.clone(),
             tightened,
             vec![],
@@ -352,6 +495,9 @@ fn share(repo: &Repo, path: &str, with: &str, facet: Facet, days: Option<u64>) -
         Facet::Presence => println!("{with} can now know {scope} exists — nothing more."),
         Facet::Shape => println!("{with} can now browse {scope} and read labels — not the papers."),
         Facet::Content => println!("{with} can now read everything in {scope}."),
+    }
+    if powers.contains(Powers::SET) {
+        println!("{with} may also move signposts there (the point power).");
     }
     if let Some(e) = grant.body.expires_at {
         println!("this key dissolves on {}", date(e));
@@ -378,18 +524,23 @@ fn rotate(repo: &Repo, path: &str, except: &[String]) -> Result<()> {
 
     // Who keeps up: everyone who verifiably holds something now, minus `except`.
     let t = now();
-    let mut keepers: Vec<(String, Facet, Option<u64>)> = Vec::new();
+    let mut keepers: Vec<(String, Facet, Powers, Option<u64>)> = Vec::new();
     for name in repo.identities()? {
         if except.contains(&name) {
             continue;
         }
-        let best = repo
+        let held: Vec<_> = repo
             .grants_for(&name)
             .into_iter()
             .filter(|g| g.body.close == close_id && g.verify(&record, t).is_ok())
-            .max_by_key(|g| g.body.facet);
-        if let Some(g) = best {
-            keepers.push((name, g.body.facet, g.body.expires_at));
+            .collect();
+        if let Some(best) = held.iter().max_by_key(|g| g.body.facet) {
+            // Powers survive the lock change too: whoever could point or
+            // invoke before keeps that right at the new epoch.
+            let powers = held
+                .iter()
+                .fold(Powers::NONE, |acc, g| acc.union(g.body.powers));
+            keepers.push((name.clone(), best.body.facet, powers, best.body.expires_at));
         }
     }
 
@@ -398,7 +549,7 @@ fn rotate(repo: &Repo, path: &str, except: &[String]) -> Result<()> {
     let new_key = record.rotate(&key, fresh).map_err(|e| anyhow!("{e}"))?;
     repo.save_close(&record)?;
 
-    for (name, facet, expires) in &keepers {
+    for (name, facet, powers, expires) in &keepers {
         let holder = repo.public_of(name)?;
         let grant = Grant::issue_root(
             &record,
@@ -407,7 +558,7 @@ fn rotate(repo: &Repo, path: &str, except: &[String]) -> Result<()> {
             record.epoch,
             holder,
             *facet,
-            Powers::NONE,
+            *powers,
             vec![],
             *expires,
             vec![],
@@ -539,6 +690,116 @@ fn hint_ask(repo: &Repo, close: &cc_core::CloseId, who: &str) {
             println!("  ask {steward}: close share <path> --with {who} --seeing label");
         }
     }
+}
+
+/// Resolve a keep reference: `main`/`HEAD` mean the current keeping; anything
+/// else is a full cipher id in hex.
+fn resolve_keep_ref(repo: &Repo, target: &str) -> Result<cc_core::CipherId> {
+    match target {
+        "main" | "HEAD" | "head" => repo
+            .store
+            .get_ref("main")?
+            .ok_or_else(|| anyhow!("nothing kept yet — run `close keep -m \"...\"` first")),
+        hex => cc_core::CipherId::from_hex(hex)
+            .ok_or_else(|| anyhow!("'{hex}'? point at `main` or a full 64-hex keeping id")),
+    }
+}
+
+/// What a signpost shows is graded like everything else: everything → the
+/// pins; label → that it moved, which move, by whom; outline → it exists.
+fn whereis(repo: &Repo, who: &str, path: &str) -> Result<()> {
+    let decl = repo.cell_decl(path)?;
+    let record = repo.load_close(&decl.close)?;
+    println!("the signpost at '{path}' ({}):", decl.kind);
+
+    let ref_name = format!("cells/{}", decl.id().to_hex());
+    let Some(cipher) = repo.store.get_ref(&ref_name)? else {
+        println!("  stands, pointing at nothing yet");
+        return Ok(());
+    };
+    let sealed = repo.load_sealed(&cipher)?;
+
+    if let Some(key) = repo.facet_key_for(who, &record, Facet::Content, sealed.epoch) {
+        let t = cc_cell::open_transition(&sealed, &key).map_err(|e| anyhow!("{e}"))?;
+        for (slot, pin) in &t.body.value {
+            let guard = if decl.forward_only.contains(slot) {
+                "  (forward-only)"
+            } else {
+                ""
+            };
+            match repo.commit_at(who, &pin.commit) {
+                Ok((_, commit)) => println!(
+                    "  {slot} → \"{}\" [{}]{guard}",
+                    commit.message,
+                    pin.commit.short()
+                ),
+                Err(_) => println!(
+                    "  {slot} → a keeping you cannot read [{}]{guard}",
+                    pin.commit.short()
+                ),
+            }
+        }
+        println!(
+            "  — move #{}, by {}, {}{}",
+            t.body.seq,
+            t.body.by.name,
+            date(t.body.when),
+            if t.body.reason.is_empty() {
+                String::new()
+            } else {
+                format!(": \"{}\"", t.body.reason)
+            }
+        );
+    } else if let Some(card) = repo.open_card(who, &sealed) {
+        println!("  {} — where it points is not yours to see", card.note);
+        println!("  ({})", cc_cell::facet_story(Facet::Shape));
+    } else {
+        println!("  it stands; even its moves are sealed to {who}");
+    }
+    Ok(())
+}
+
+/// Walk the journal: every move, who, when, and under whose authority. The
+/// trail is content-faceted — prev links live inside sealed transitions.
+fn trail(repo: &Repo, who: &str, path: &str) -> Result<()> {
+    let decl = repo.cell_decl(path)?;
+    let record = repo.load_close(&decl.close)?;
+    let mut next = {
+        let ref_name = format!("cells/{}", decl.id().to_hex());
+        repo.store.get_ref(&ref_name)?
+    };
+    if next.is_none() {
+        println!("no moves yet at '{path}'");
+        return Ok(());
+    }
+    while let Some(cipher) = next {
+        let sealed = repo.load_sealed(&cipher)?;
+        let Some(key) = repo.facet_key_for(who, &record, Facet::Content, sealed.epoch) else {
+            println!("· (the rest of the trail is sealed to {who})");
+            break;
+        };
+        let t = cc_cell::open_transition(&sealed, &key).map_err(|e| anyhow!("{e}"))?;
+        let issuer = repo
+            .name_of_signer(&t.body.grant.body.issuer_sign)
+            .unwrap_or_else(|| "a steward".into());
+        println!(
+            "· move #{}  {}  by {}  (authority from {}){}",
+            t.body.seq,
+            date(t.body.when),
+            t.body.by.name,
+            issuer,
+            if t.body.reason.is_empty() {
+                String::new()
+            } else {
+                format!("  \"{}\"", t.body.reason)
+            }
+        );
+        for (slot, pin) in &t.body.value {
+            println!("    {slot} → {}", pin.commit.short());
+        }
+        next = t.body.prev;
+    }
+    Ok(())
 }
 
 /// Tiny civil-date formatter (UTC) so nobody has to read raw unix seconds.

@@ -128,6 +128,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cc-cell"
+version = "0.0.1"
+dependencies = [
+ "blake3",
+ "cc-core",
+ "ed25519-dalek",
+ "postcard",
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "cc-core"
 version = "0.0.1"
 dependencies = [
@@ -245,6 +257,7 @@ name = "close"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "cc-cell",
  "cc-core",
  "cc-dag",
  "cc-store",

@@ -83,6 +83,30 @@ pub const GLOSSARY: &[Term] = &[
         kitchen_table: "A photocopied folder made for one task — for an assistant, say — that stops opening when the task is done.",
         fine_print: "A derived commons sealed to a task-scoped close whose keys expire with the grant; the residue remains as an audit of what was shown.",
     },
+    Term {
+        plain: "signpost",
+        wizard: "cell (designation plane)",
+        kitchen_table: "The kept history is the land; a signpost stands on it and points — 'production IS these snapshots'. Moving it never changes the land.",
+        fine_print: "A permissioned, typed, journaled ref. Its value is a vector of pins into kept history; its declaration (wiring, guards) is a kept file; its value has current-value semantics, never merge semantics.",
+    },
+    Term {
+        plain: "pointing",
+        wizard: "transition (SET power)",
+        kitchen_table: "Moving a signpost. Seeing where it points and being allowed to move it are different keys — and every move leaves a footprint forever.",
+        fine_print: "A signed, hash-chained object sealed into the DAG, embedding the mover's full grant chain. The mutable plane holds no new trusted state: the current value is the fold of the journal.",
+    },
+    Term {
+        plain: "the trail",
+        wizard: "cell journal",
+        kitchen_table: "Every move of a signpost, written down: who, when, why, and under whose signature.",
+        fine_print: "The hash chain of transitions, tamper-evident end to end, readable at content facet; label holders see that moves happened, not where they point.",
+    },
+    Term {
+        plain: "guard",
+        wizard: "transition predicate",
+        kitchen_table: "A rule on the signpost itself — 'this one only moves forward' — that binds everyone, including whoever planted it, until the wiring is changed in the open.",
+        fine_print: "Declared in the cell's versioned declaration, checked by pointer and replicas alike. v0 ships forward-only; approvals, attestations, and quorum moves are design.",
+    },
 ];
 
 pub fn explain(term: Option<&str>) -> String {

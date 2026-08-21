@@ -20,7 +20,7 @@ use std::fmt;
 /// A fourth notion, *use* ("ask the butler"), is not a disclosure level at
 /// all: it is a power carried by a grant and honored by a trusted actuator.
 /// See [`Powers`].
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Facet {
     Presence,
     Shape,
@@ -74,6 +74,24 @@ impl Powers {
     /// May ask a trusted actuator to *apply* the content (deploy a secret,
     /// sign with a key) without ever seeing it.
     pub const INVOKE: Powers = Powers(1);
+    /// May move signposts (cells) in this close: write transitions to the
+    /// designation plane. Plain speech: "point". Reading where a signpost
+    /// stands is a facet question; *moving* it is this power.
+    pub const SET: Powers = Powers(2);
+
+    /// Accepts either register: "point"/"set", "butler"/"invoke".
+    pub fn parse_word(s: &str) -> Option<Powers> {
+        match s.to_ascii_lowercase().as_str() {
+            "point" | "set" => Some(Powers::SET),
+            "butler" | "invoke" => Some(Powers::INVOKE),
+            "none" => Some(Powers::NONE),
+            _ => None,
+        }
+    }
+
+    pub fn union(&self, other: Powers) -> Powers {
+        Powers(self.0 | other.0)
+    }
 
     pub fn contains(&self, other: Powers) -> bool {
         self.0 & other.0 == other.0
@@ -86,10 +104,16 @@ impl Powers {
 
 impl fmt::Debug for Powers {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut names = Vec::new();
         if self.contains(Powers::INVOKE) {
-            write!(f, "Powers(invoke)")
-        } else {
-            write!(f, "Powers(none)")
+            names.push("invoke");
         }
+        if self.contains(Powers::SET) {
+            names.push("set");
+        }
+        if names.is_empty() {
+            names.push("none");
+        }
+        write!(f, "Powers({})", names.join("+"))
     }
 }
