@@ -1,0 +1,17 @@
+[package]
+name = "cc-core"
+description = "CloseCommon substrate: sealed content-addressed objects, closes, facets, grants"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+blake3.workspace = true
+chacha20poly1305.workspace = true
+x25519-dalek.workspace = true
+ed25519-dalek.workspace = true
+rand_core.workspace = true
+serde.workspace = true
+postcard.workspace = true
+thiserror.workspace = true

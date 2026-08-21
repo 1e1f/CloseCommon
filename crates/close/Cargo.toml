@@ -1,0 +1,25 @@
+[package]
+name = "close"
+description = "CloseCommon CLI: a commons you can keep, protect, and share"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "close"
+path = "src/main.rs"
+
+[dependencies]
+cc-core = { path = "../cc-core" }
+cc-dag = { path = "../cc-dag" }
+cc-store = { path = "../cc-store" }
+clap.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+postcard.workspace = true
+rand_core.workspace = true
+ed25519-dalek.workspace = true
+x25519-dalek.workspace = true
+walkdir.workspace = true

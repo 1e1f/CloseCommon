@@ -1,0 +1,11 @@
+[package]
+name = "cc-store"
+description = "CloseCommon local object store: ciphertext-addressed, key-blind"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+cc-core = { path = "../cc-core" }
+thiserror.workspace = true
